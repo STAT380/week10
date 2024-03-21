@@ -1,0 +1,232 @@
+---
+title: "Week 10 Lec 2 "
+# format: html
+format: ipynb
+editor: visual
+---
+
+# Agenda
+
+- Multinomial Logistic Regression
+- Desicion(Classification) Trees
+- SVM
+
+```{r}
+packages<- c("ISLR2","dplyr","tidyr","readr","purrr","glmnet","caret","car")
+packages2<- c("mlbench","repr","nnet")
+#renv::install(packages)
+renv::install(packages2)
+```
+
+```{r}
+library(ISLR2)
+library(dplyr)
+library(tidyr)
+library(readr)
+library(purrr)
+library(glmnet)
+library(caret)
+library(car)
+library(mlbench)
+library(repr)
+library(nnet)
+```
+
+
+**Decision Boundary**
+
+Decision boundaries define regions in space where we can separate one class of points from
+another.
+
+
+```{R}
+library(class)
+x<- t(replicate( 200 , runif( 2 )))
+y<- ifelse(apply(x, 1 , \(x)sum(x^1.5))+0.2*rnorm( 200 )<= 1 , 0 , 1 ) %>% as.factor()
+col<-ifelse(y== 0 ,"blue","red")
+plot(x[, 1 ],x[, 2 ],col=col)
+```
+
+
+
+
+```{r}
+df<-data.frame(y=y,x1=x[, 1 ],x2=x[, 2 ])
+model<-glm(y~.,df,family=binomial())
+summary(model)
+```
+
+```{R}
+xnew<-data.frame(
+x1=rep(seq( 0 , 1 ,length.out= 50 ), 50 ),
+x2=rep(seq( 0 , 1 ,length.out= 50 ),each= 50 )
+)
+```
+```{r}
+prob<-predict(model,xnew,type="response")
+decision<-ifelse(prob<0.5,"blue","red")
+```
+```{R}
+plot(xnew[, 1 ],xnew[, 2 ],col=decision, pch= 22 )
+points(x[, 1 ],x[, 2 ],col=col,pch= 20 )
+```
+
+Here we can see where the decision boundary is formed. This is a powerful tool for classification.
+
+**Confusion matrix**
+
+```{r}
+idx<-sample( 1 :nrow(df), 50 )
+train<-df[-idx,]
+test<-df[idx,]
+```
+```{r}
+model<-glm(y~.,train,family=binomial())
+probs<-predict(model,test,type="response")
+```
+```{r}
+predicted<-ifelse(probs<0.5, 0 , 1 )
+```
+```{R}
+expected<-test$y
+```
+```{r}
+table(predicted,expected)
+```
+
+This table is called a confusion matrix. 
+
+Optimizing this table is context dependent. If 0 is a benign tumor and 1 is a malignant tumor,
+some perspectives may want to minimize false positives and others may want to minimize false
+negatives. Overall, though, the closer the (0,1) and (1,0) values are to zero, the better the
+model is at predicting data.
+
+Caret once again helps with this
+
+```{R}
+caret::confusionMatrix(data=as.factor(predicted),reference=as.factor(expected))
+```
+The caret output also gives lots of summary statistics. Sensitivity measures the proportion of
+class 0’s successfully predicted and specificity measures the proportion of class 1’s.
+
+**Multinomial Logistic Regression**
+
+What if our model has more than two classes as outputs? We fix a class as our reference level,
+and for k different classes, we create k-1 logistic regression models, one for each level that isn’t
+the reference.
+
+We can interpret softmax as the probability of belonging to a class and argmax as designating
+the true class.
+
+```{R}
+sample( 0 : 2 ,size= 1000 ,replace=TRUE,prob=c(0.8,0.1,0.1))
+```
+
+```{r}
+b<-c(- 5 , 0 , 5 )
+prob_function =\(x)exp(b*x)/sum(exp(b*x))
+x<-rnorm( 1000 )
+y<-c()
+for(i in 1 :length(x)){
+y[i] <- sample( 0 : 2 , 1 , prob=prob_function(x[i]))
+}
+cbind(x,y)%>%head()
+```
+
+```{r}
+df <- data.frame(x=x,y=as.factor(y))
+df$y<- relevel(df$y,ref="2")
+```
+```{r}
+model<- multinom(y~x,df)
+```
+
+```{r}
+summary(model) # provides a log odds slope
+```
+
+**Classification (decision) trees**
+
+If a distribution of data does not have a linear decision boundary, logistic regression is ineffec-
+tive at predicting the response. Classification trees are a machine learning tool for predicting
+categorical outcomes. They are hierarchical, partitioning data into smaller and smaller subsets
+until coming to a conclusion for the predicted category.
+
+For example: Is blood pressure >=140? If yes, is cholesterol level >=200? If no, ... If yes, is
+age >= 50? If no, ... If yes, high risk for heart problems. If no, ...
+
+This is one “branch” of the decision tree, if you didn’t answer yes, the questions would change
+and branch out to different results.
+
+
+```{r}
+#install.packages("rpart")
+#install.packages("rpart.plot")
+library(rpart)
+```
+
+```{r}
+library(rpart.plot)
+```
+
+```{r}
+n<- 500
+X<-t(replicate(n, 2 *runif( 2 )- 1 ))
+```
+```{r}
+ex3 <- \(x)ifelse(
+(x[ 1 ]< 0.5 && x[ 1 ] >-0.5 && x[ 2 ] <0.5 && x[ 2 ] > 0 ) ||
+(x[ 1 ]>0.5 && x[ 2 ] >0.5) ||
+(x[ 1 ]<0.25 && x[ 2 ]< -0.5),
+1 , 0
+)
+```
+```{r}
+y<-apply(X, 1 ,ex3)%>% as.factor()
+col<-ifelse(y== 0 ,"blue","red")
+df<-data.frame(y=y,x1=X[, 1 ],x2=X[, 2 ])
+plot(df$x1,df$x2,col=col,pch= 19 )
+```
+
+```{r}
+f_dtree<- \(x)as.numeric(predict(dtree,data.frame(x1=X[, 1 ],x2=X[, 2 ]),type="class"))- 1
+```
+If a region of a class can be bounded by rectangles, then decision trees are very useful tools for
+accurately classifying data. If the data instead has a linear boundary, we should use logistic
+regression instead. In the above example, decision trees do a solid job since the red regions
+are roughly rectangular.
+
+**Support Vector Machine**
+
+Imagine we have a region described by |x1|+|x2|<=1. This region is a diamond/titled square
+shape. A decision tree would have lots of trouble because it only deals with horizontal/vertical
+divisions of the region. We would end up with a weak attempt to replicate the sloped lines
+with a staircase pattern. Decision trees cannot account for relationships between the variables
+when asking its questions, such as being unable to ask is x1+x2>1?
+
+```{r}
+# install.packages("e1071")
+library(e1071)
+```
+```{r}
+ex4 <- \(x)ifelse(sum(abs(x))<=1.0, 0 , 1 )
+y<-apply(X, 1 ,ex4)%>% as.factor()
+col<-ifelse(y== 0 ,"blue","red")
+df<-data.frame(y=y,x1=X[, 1 ],x2=X[, 2 ])
+plot(df$x1,df$x2,col=col,pch= 19 )
+```
+
+```{R}
+svm_model<- svm(y~x1+x2,df,kernel="radial")
+summary(svm_model)
+```
+
+The SVM model can accurately model these tilted decision boundaries where a decision tree
+would have trouble.
+
+The “radial” kernel is a popular one to use in SVM models. Changing the kernel allows to
+switch between multiple different types of classification.
+
+Decision boundaries for SVM’s can be more complex, with the aforementioned diamond shape,
+the SVM can successfully replicate those bounds where decision trees and logistic regression
+failed.
